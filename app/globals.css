@@ -1,0 +1,238 @@
+@import "tailwindcss";
+
+/* ===== DESIGN SYSTEM "TERROIR NUMERIQUE" ===== */
+
+:root {
+  /* Couleurs principales */
+  --bordeaux: #6B1F3D;
+  --bordeaux-light: #8B2F4D;
+  --bordeaux-dark: #4A1529;
+
+  --or: #C5975C;
+  --or-light: #D4AD7A;
+  --or-dark: #A67B3D;
+
+  --vert: #4A5D3F;
+  --vert-light: #5A7350;
+  --vert-dark: #3A4A32;
+
+  --beige: #F5F1E8;
+  --beige-dark: #E8E0D0;
+  --beige-light: #FAF8F3;
+
+  --gris-tech: #566573;
+  --gris-light: #7F8C8D;
+  --gris-dark: #34495E;
+
+  /* Couleurs semantiques */
+  --success: #4A7C59;
+  --warning: #D4A574;
+  --danger: #C0392B;
+  --info: #5B7A99;
+
+  /* Fond et texte */
+  --background: var(--beige);
+  --foreground: var(--gris-dark);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+
+  /* Couleurs custom */
+  --color-bordeaux: var(--bordeaux);
+  --color-bordeaux-light: var(--bordeaux-light);
+  --color-bordeaux-dark: var(--bordeaux-dark);
+  --color-or: var(--or);
+  --color-or-light: var(--or-light);
+  --color-or-dark: var(--or-dark);
+  --color-vert: var(--vert);
+  --color-vert-light: var(--vert-light);
+  --color-vert-dark: var(--vert-dark);
+  --color-beige: var(--beige);
+  --color-beige-dark: var(--beige-dark);
+  --color-beige-light: var(--beige-light);
+  --color-gris-tech: var(--gris-tech);
+  --color-gris-light: var(--gris-light);
+  --color-gris-dark: var(--gris-dark);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+  --color-info: var(--info);
+
+  /* Fonts */
+  --font-cormorant: var(--font-cormorant), Georgia, serif;
+  --font-poppins: var(--font-poppins), system-ui, sans-serif;
+}
+
+/* ===== BASE STYLES ===== */
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-poppins);
+}
+
+/* Titres avec Cormorant Garamond */
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-cormorant);
+  color: var(--bordeaux);
+  font-weight: 600;
+}
+
+/* Focus visible (accessibilite) */
+:focus-visible {
+  outline: 2px solid var(--bordeaux);
+  outline-offset: 2px;
+}
+
+/* Selection de texte */
+::selection {
+  background-color: var(--bordeaux);
+  color: white;
+}
+
+/* ===== UTILITY CLASSES ===== */
+
+.font-cormorant {
+  font-family: var(--font-cormorant);
+}
+
+.font-poppins {
+  font-family: var(--font-poppins);
+}
+
+/* Boutons */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.5rem;
+  border-radius: 0.75rem;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.btn:focus-visible {
+  outline: 2px solid var(--bordeaux);
+  outline-offset: 2px;
+}
+
+.btn-primary {
+  background-color: var(--bordeaux);
+  color: white;
+}
+
+.btn-primary:hover {
+  background-color: var(--bordeaux-light);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(107, 31, 61, 0.25);
+}
+
+.btn-secondary {
+  background-color: white;
+  color: var(--bordeaux);
+  border: 2px solid var(--bordeaux);
+}
+
+.btn-secondary:hover {
+  background-color: var(--bordeaux);
+  color: white;
+}
+
+.btn-or {
+  background-color: var(--or);
+  color: white;
+}
+
+.btn-or:hover {
+  background-color: var(--or-light);
+}
+
+/* Cards */
+.card {
+  background-color: white;
+  border-radius: 1rem;
+  padding: 1.5rem;
+  box-shadow: 0 4px 20px rgba(107, 31, 61, 0.08);
+  transition: all 0.2s ease;
+}
+
+.card:hover {
+  box-shadow: 0 8px 30px rgba(107, 31, 61, 0.12);
+  transform: translateY(-2px);
+}
+
+/* Gradient text */
+.text-gradient {
+  background: linear-gradient(135deg, var(--bordeaux) 0%, var(--or) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Glass effect */
+.glass {
+  background: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+/* Animation keyframes */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+@keyframes pulse-soft {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+
+.animate-fade-in-up {
+  animation: fadeInUp 0.6s ease-out forwards;
+}
+
+.animate-float {
+  animation: float 3s ease-in-out infinite;
+}
+
+.animate-pulse-soft {
+  animation: pulse-soft 2s ease-in-out infinite;
+}
+
+@keyframes fadeOut {
+  from { opacity: 1; transform: translateY(0); }
+  to { opacity: 0; transform: translateY(10px); }
+}
+
+.animate-fade-out {
+  animation: fadeOut 0.2s ease-out forwards;
+}
+
+/* Delay animations */
+.delay-100 { animation-delay: 100ms; }
+.delay-200 { animation-delay: 200ms; }
+.delay-300 { animation-delay: 300ms; }
+.delay-400 { animation-delay: 400ms; }
+.delay-500 { animation-delay: 500ms; }

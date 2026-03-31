@@ -1,0 +1,964 @@
+// ============================================
+// OENOCLASS - Schema Prisma
+// Plateforme pedagogique en oenologie
+// ============================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// AUTHENTIFICATION & UTILISATEURS
+// ============================================
+
+model User {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  emailVerified Boolean  @default(false)
+  name          String   @default("")
+  firstName     String
+  lastName      String
+  image         String?   // Better Auth utilise "image" au lieu de "avatar"
+  avatar        String?
+  role          UserRole  @default(STUDENT)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  lastLoginAt   DateTime?
+
+  // Relations GAR/ENT
+  garId         String? @unique // Identifiant GAR unique
+  garAttributes Json? // Attributs SAML bruts du GAR
+
+  // Relations
+  establishment   Establishment? @relation(fields: [establishmentId], references: [id])
+  establishmentId String?
+
+  sessions Session[]
+  accounts Account[]
+
+  // Relations pedagogiques
+  teacherClasses ClassGroup[]   @relation("TeacherClasses")
+  studentClasses ClassGroup[]   @relation("StudentClasses")
+  progress       UserProgress[]
+  quizAttempts   QuizAttempt[]
+  tastings       Tasting[]
+  notifications  Notification[]
+
+  // Audit
+  auditLogs AuditLog[]
+
+  // Sequences & Feedback
+  sequences      Sequence[]  @relation("TeacherSequences")
+  results        Result[]    @relation("UserResults")
+  givenFeedbacks Feedback[]  @relation("TeacherFeedbacks")
+  receivedFeedbacks Feedback[] @relation("StudentFeedbacks")
+
+  // Permissions personnalisées
+  permissions UserPermission[]
+
+  @@index([email])
+  @@index([garId])
+  @@index([establishmentId])
+  @@index([role])
+  @@index([createdAt])
+  @@map("users")
+}
+
+enum UserRole {
+  STUDENT // Eleve
+  TEACHER // Enseignant
+  ADMIN // Administrateur etablissement
+  SUPER_ADMIN // Administrateur plateforme
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([token])
+  @@map("sessions")
+}
+
+model Account {
+  id                    String    @id @default(cuid())
+  userId                String
+  accountId             String
+  providerId            String // "credentials", "gar-saml", "google", etc.
+  accessToken           String?
+  refreshToken          String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  idToken               String?
+  password              String? // Hash pour credentials
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([providerId, accountId])
+  @@index([userId])
+  @@map("accounts")
+}
+
+model Verification {
+  id         String   @id @default(cuid())
+  identifier String // email ou autre identifiant
+  value      String // token de verification
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([identifier])
+  @@map("verifications")
+}
+
+// ============================================
+// ETABLISSEMENTS & CLASSES
+// ============================================
+
+model Establishment {
+  id        String   @id @default(cuid())
+  uai       String   @unique // Code UAI de l'etablissement
+  name      String
+  address   String?
+  city      String?
+  zipCode   String?
+  region    String?
+  phone     String?
+  email     String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  users   User[]
+  classes ClassGroup[]
+
+  @@index([uai])
+  @@map("establishments")
+}
+
+model ClassGroup {
+  id        String   @id @default(cuid())
+  name      String // Ex: "Terminale Bac Pro CGEA"
+  year      String // Ex: "2025-2026"
+  level     String? // Ex: "CAPa", "Bac Pro", "BTSA"
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  establishment   Establishment @relation(fields: [establishmentId], references: [id])
+  establishmentId String
+
+  teachers User[] @relation("TeacherClasses")
+  students User[] @relation("StudentClasses")
+
+  @@index([establishmentId])
+  @@index([year])
+  @@map("class_groups")
+}
+
+// ============================================
+// BLOCS DE COMPETENCES
+// ============================================
+
+model CompetencyBlock {
+  id          String   @id @default(cuid())
+  number      Int      @unique // 1 a 8
+  title       String
+  description String?
+  icon        String? // Emoji ou icone
+  color       String? // Couleur theme
+  isActive    Boolean  @default(true)
+  order       Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  activities Activity[]
+  quizzes    Quiz[]
+
+  @@map("competency_blocks")
+}
+
+model Activity {
+  id          String       @id @default(cuid())
+  title       String
+  description String?
+  type        ActivityType
+  content     Json? // Contenu structure de l'activite
+  duration    Int? // Duree estimee en minutes
+  points      Int          @default(10)
+  isActive    Boolean      @default(true)
+  order       Int          @default(0)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  // Relations
+  block   CompetencyBlock @relation(fields: [blockId], references: [id])
+  blockId String
+
+  progress UserProgress[]
+  sequenceActivities SequenceActivity[]
+  results            Result[]   @relation("ActivityResults")
+  feedbacks          Feedback[] @relation("ActivityFeedbacks")
+
+  @@index([blockId])
+  @@index([blockId, isActive])
+  @@map("activities")
+}
+
+enum ActivityType {
+  LESSON // Cours/Lecon
+  QUIZ // Quiz/QCM
+  TASTING // Degustation
+  EXERCISE // Exercice pratique
+  VIDEO // Video
+  DOCUMENT // Document a lire
+  INTERACTIVE // Activite interactive (roue des aromes, etc.)
+}
+
+model UserProgress {
+  id          String         @id @default(cuid())
+  status      ProgressStatus @default(NOT_STARTED)
+  score       Int? // Score obtenu (0-100)
+  timeSpent   Int? // Temps passe en secondes
+  attempts    Int            @default(0)
+  completedAt DateTime?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  // Relations
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId     String
+  activity   Activity @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  activityId String
+
+  @@unique([userId, activityId])
+  @@index([userId])
+  @@index([activityId])
+  @@map("user_progress")
+}
+
+enum ProgressStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+}
+
+// ============================================
+// QUIZ & EVALUATIONS
+// ============================================
+
+model Quiz {
+  id               String   @id @default(cuid())
+  title            String
+  description      String?
+  timeLimit        Int? // Limite de temps en minutes
+  passingScore     Int      @default(60) // Score minimum pour valider (%)
+  shuffleQuestions Boolean  @default(true)
+  showCorrection   Boolean  @default(true)
+  maxAttempts      Int? // Nombre max de tentatives (null = illimite)
+  isActive         Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  // Relations
+  block   CompetencyBlock? @relation(fields: [blockId], references: [id])
+  blockId String?
+
+  questions QuizQuestion[]
+  attempts  QuizAttempt[]
+
+  @@index([blockId])
+  @@map("quizzes")
+}
+
+model QuizQuestion {
+  id          String       @id @default(cuid())
+  type        QuestionType
+  question    String
+  explanation String? // Explication de la reponse
+  points      Int          @default(1)
+  order       Int          @default(0)
+  imageUrl    String?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  // Relations
+  quiz   Quiz   @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  quizId String
+
+  options QuizOption[]
+  answers QuizAnswer[]
+
+  @@index([quizId])
+  @@map("quiz_questions")
+}
+
+enum QuestionType {
+  SINGLE_CHOICE // QCM reponse unique
+  MULTIPLE_CHOICE // QCM reponses multiples
+  TRUE_FALSE // Vrai/Faux
+  TEXT // Reponse texte (correction manuelle)
+  ORDERING // Remettre dans l'ordre
+  MATCHING // Associer des elements
+}
+
+model QuizOption {
+  id        String   @id @default(cuid())
+  text      String
+  isCorrect Boolean  @default(false)
+  order     Int      @default(0)
+  imageUrl  String?
+  createdAt DateTime @default(now())
+
+  // Relations
+  question   QuizQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  questionId String
+
+  @@index([questionId])
+  @@map("quiz_options")
+}
+
+model QuizAttempt {
+  id          String    @id @default(cuid())
+  score       Int? // Score obtenu (0-100)
+  passed      Boolean?
+  startedAt   DateTime  @default(now())
+  completedAt DateTime?
+  timeSpent   Int? // Temps en secondes
+
+  // Relations
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+  quiz   Quiz   @relation(fields: [quizId], references: [id])
+  quizId String
+
+  answers QuizAnswer[]
+
+  @@index([userId])
+  @@index([quizId])
+  @@index([userId, quizId])
+  @@map("quiz_attempts")
+}
+
+model QuizAnswer {
+  id              String   @id @default(cuid())
+  selectedOptions String[] // IDs des options selectionnees
+  textAnswer      String? // Pour les questions texte
+  isCorrect       Boolean?
+  points          Int      @default(0)
+  createdAt       DateTime @default(now())
+
+  // Relations
+  attempt    QuizAttempt  @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  attemptId  String
+  question   QuizQuestion @relation(fields: [questionId], references: [id])
+  questionId String
+
+  @@index([attemptId])
+  @@map("quiz_answers")
+}
+
+// ============================================
+// DEGUSTATIONS
+// ============================================
+
+model Tasting {
+  id             String        @id @default(cuid())
+  title          String?
+  date           DateTime      @default(now())
+  status         TastingStatus @default(DRAFT)
+  isBlindTasting Boolean       @default(false) // Degustation a l'aveugle
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  // Relations
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+
+  wine   Wine?   @relation(fields: [wineId], references: [id])
+  wineId String?
+
+  // Analyses
+  visualAnalysis    VisualAnalysis?
+  olfactoryAnalysis OlfactoryAnalysis?
+  gustatoryAnalysis GustatoryAnalysis?
+
+  // Conclusion
+  overallScore   Int? // Note globale (0-20)
+  conclusion     String? // Commentaire final
+  foodPairings   String[] // Accords mets-vins suggeres
+  agingPotential String? // Potentiel de garde
+  teacherComment String? // Commentaire enseignant
+  teacherScore   Int? // Note enseignant
+
+  @@index([userId])
+  @@index([wineId])
+  @@index([status])
+  @@index([userId, createdAt])
+  @@map("tastings")
+}
+
+enum TastingStatus {
+  DRAFT
+  SUBMITTED
+  REVIEWED
+}
+
+model VisualAnalysis {
+  id            String  @id @default(cuid())
+  clarity       String? // Limpide, Voile, Trouble
+  intensity     String? // Pale, Moyenne, Soutenue, Intense
+  color         String? // Couleur principale
+  colorNuance   String? // Nuance (reflets)
+  viscosity     String? // Fluide, Gras, Sirupeux
+  effervescence String? // Pour les vins effervescents
+  notes         String?
+
+  tasting   Tasting @relation(fields: [tastingId], references: [id], onDelete: Cascade)
+  tastingId String  @unique
+
+  @@map("visual_analyses")
+}
+
+model OlfactoryAnalysis {
+  id              String   @id @default(cuid())
+  intensity       String? // Faible, Moyenne, Aromatique, Puissant
+  quality         String? // Simple, Agreable, Fin, Complexe
+  aromaFamilies   String[] // Familles aromatiques principales
+  primaryAromas   String[] // Aromes primaires (cepage)
+  secondaryAromas String[] // Aromes secondaires (fermentation)
+  tertiaryAromas  String[] // Aromes tertiaires (elevage)
+  defects         String[] // Defauts detectes
+  notes           String?
+
+  tasting   Tasting @relation(fields: [tastingId], references: [id], onDelete: Cascade)
+  tastingId String  @unique
+
+  @@map("olfactory_analyses")
+}
+
+model GustatoryAnalysis {
+  id           String   @id @default(cuid())
+  attackType   String? // Franche, Molle, Agressive
+  sweetness    String? // Sec, Demi-sec, Moelleux, Liquoreux
+  acidity      String? // Plat, Frais, Vif, Nerveux
+  tannins      String? // Souple, Fondus, Fermes, Apres (vins rouges)
+  alcohol      String? // Leger, Equilibre, Chaleureux, Brulant
+  body         String? // Leger, Moyen, Charpenté, Puissant
+  finish       String? // Courte, Moyenne, Longue, Persistante
+  finishLength Int? // Caudalies (secondes)
+  balance      String? // Desequilibre, Correct, Equilibre, Harmonieux
+  flavors      String[] // Saveurs retrouvees en bouche
+  notes        String?
+
+  tasting   Tasting @relation(fields: [tastingId], references: [id], onDelete: Cascade)
+  tastingId String  @unique
+
+  @@map("gustatory_analyses")
+}
+
+// ============================================
+// REFERENCE VINS
+// ============================================
+
+model Wine {
+  id           String    @id @default(cuid())
+  name         String
+  vintage      Int? // Millesime
+  type         WineType
+  color        WineColor
+  isAlcoholic  Boolean   @default(true)
+  alcoholLevel Float? // Degre d'alcool
+  producer     String?
+  region       String?
+  country      String    @default("France")
+  imageUrl     String?
+  description  String?
+  climate      String? // frais, tempere, chaud
+  isActive     Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  // Relations
+  appellation   Appellation? @relation(fields: [appellationId], references: [id])
+  appellationId String?
+
+  grapeVarieties  WineGrapeVariety[]
+  tastings        Tasting[]
+  sensoryProfile  WineSensoryProfile?
+
+  @@index([appellationId])
+  @@index([region])
+  @@map("wines")
+}
+
+// Profil sensoriel de reference pour la comparaison pedagogique
+model WineSensoryProfile {
+  id                String   @id @default(cuid())
+
+  // Parametres sensoriels (basés sur vin.json)
+  acidity           AcidityLevel
+  perceivedAlcohol  AlcoholLevel
+  body              BodyLevel        // matiere
+  structure         StructureType
+  tannins           TanninLevel?     // null pour les blancs
+  finish            FinishLength     // finale
+  dominantAromas    String[]         // aromes_dominants
+  variability       VariabilityLevel // variabilite du profil
+
+  // Notes pedagogiques
+  typicalCharacteristics String?     // Caracteristiques typiques
+  pedagogicalNotes       String?     // Notes pour l'enseignant
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relation 1-1 avec Wine
+  wine   Wine   @relation(fields: [wineId], references: [id], onDelete: Cascade)
+  wineId String @unique
+
+  @@map("wine_sensory_profiles")
+}
+
+// Enums pour les profils sensoriels
+enum AcidityLevel {
+  LOW        // faible
+  MEDIUM     // moyenne
+  HIGH       // elevee
+}
+
+enum AlcoholLevel {
+  LOW        // faible
+  MODERATE   // modere
+  HIGH       // eleve
+}
+
+enum BodyLevel {
+  LIGHT      // legere
+  MEDIUM     // moyenne
+  FULL       // ample
+  POWERFUL   // puissante
+}
+
+enum StructureType {
+  TENSE      // tendue
+  AMPLE      // ample
+}
+
+enum TanninLevel {
+  FINE       // fins
+  SOFT       // souples
+  FIRM       // serres
+  PRONOUNCED // marques
+}
+
+enum FinishLength {
+  SHORT          // courte
+  MEDIUM         // moyenne
+  MEDIUM_LONG    // moyenne_a_longue
+  LONG           // longue
+}
+
+enum VariabilityLevel {
+  LOW        // faible
+  MEDIUM     // moyenne
+  HIGH       // elevee
+}
+
+enum WineType {
+  STILL // Tranquille
+  SPARKLING // Effervescent
+  FORTIFIED // Mute/Fortifie
+  SWEET // Liquoreux
+}
+
+enum WineColor {
+  WHITE
+  RED
+  ROSE
+  ORANGE
+}
+
+model WineGrapeVariety {
+  id         String @id @default(cuid())
+  percentage Int? // Pourcentage dans l'assemblage
+
+  wine           Wine         @relation(fields: [wineId], references: [id], onDelete: Cascade)
+  wineId         String
+  grapeVariety   GrapeVariety @relation(fields: [grapeVarietyId], references: [id])
+  grapeVarietyId String
+
+  @@unique([wineId, grapeVarietyId])
+  @@map("wine_grape_varieties")
+}
+
+model GrapeVariety {
+  id              String    @id @default(cuid())
+  name            String    @unique
+  color           WineColor
+  origin          String?
+  characteristics String?
+  aromaticProfile Json? // Profil aromatique structure
+  imageUrl        String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  wines WineGrapeVariety[]
+
+  @@map("grape_varieties")
+}
+
+model Appellation {
+  id          String          @id @default(cuid())
+  name        String
+  type        AppellationType
+  region      String
+  country     String          @default("France")
+  description String?
+  regulations String? // Reglementation
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  wines Wine[]
+
+  @@unique([name, region])
+  @@map("appellations")
+}
+
+enum AppellationType {
+  AOP // Appellation d'Origine Protegee
+  IGP // Indication Geographique Protegee
+  VDF // Vin de France
+}
+
+// ============================================
+// ROUE DES AROMES
+// ============================================
+
+model AromaCategory {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?
+  color       String? // Couleur dans la roue
+  order       Int      @default(0)
+  createdAt   DateTime @default(now())
+
+  subCategories AromaSubCategory[]
+
+  @@map("aroma_categories")
+}
+
+model AromaSubCategory {
+  id        String   @id @default(cuid())
+  name      String
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+
+  category   AromaCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  categoryId String
+
+  aromas Aroma[]
+
+  @@unique([name, categoryId])
+  @@index([categoryId])
+  @@map("aroma_sub_categories")
+}
+
+model Aroma {
+  id              String   @id @default(cuid())
+  name            String
+  description     String?
+  associatedWines String[] // Types de vins associes
+  order           Int      @default(0)
+  createdAt       DateTime @default(now())
+
+  subCategory   AromaSubCategory @relation(fields: [subCategoryId], references: [id], onDelete: Cascade)
+  subCategoryId String
+
+  @@unique([name, subCategoryId])
+  @@index([subCategoryId])
+  @@map("aromas")
+}
+
+// ============================================
+// GLOSSAIRE
+// ============================================
+
+model GlossaryTerm {
+  id           String   @id @default(cuid())
+  term         String   @unique
+  definition   String
+  category     String? // Viticulture, Vinification, Degustation, etc.
+  relatedTerms String[] // Termes lies
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([term])
+  @@index([category])
+  @@map("glossary_terms")
+}
+
+// ============================================
+// NOTIFICATIONS
+// ============================================
+
+model Notification {
+  id        String           @id @default(cuid())
+  type      NotificationType
+  title     String
+  message   String
+  link      String? // Lien vers l'action
+  isRead    Boolean          @default(false)
+  createdAt DateTime         @default(now())
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+
+  @@index([userId])
+  @@index([isRead])
+  @@index([userId, createdAt])
+  @@map("notifications")
+}
+
+enum NotificationType {
+  INFO
+  SUCCESS
+  WARNING
+  ACHIEVEMENT // Badge/Accomplissement debloque
+  QUIZ_RESULT // Resultat de quiz
+  TASTING_REVIEW // Degustation corrigee
+  NEW_ACTIVITY // Nouvelle activite disponible
+}
+
+// ============================================
+// AUDIT & LOGS
+// ============================================
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  action     String // CREATE, UPDATE, DELETE, LOGIN, etc.
+  entityType String? // User, Tasting, Quiz, etc.
+  entityId   String?
+  oldValues  Json?
+  newValues  Json?
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+  userId String?
+
+  @@index([userId])
+  @@index([action])
+  @@index([entityType])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+// ============================================
+// SEQUENCES PEDAGOGIQUES
+// ============================================
+
+model Sequence {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  objectives  String?
+  duration    Int?     // Duree estimee en minutes
+  isPublished Boolean  @default(false)
+  order       Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  teacher   User   @relation("TeacherSequences", fields: [teacherId], references: [id])
+  teacherId String
+
+  activities SequenceActivity[]
+
+  @@index([teacherId])
+  @@map("sequences")
+}
+
+model SequenceActivity {
+  id    String @id @default(cuid())
+  order Int    @default(0)
+
+  sequence   Sequence @relation(fields: [sequenceId], references: [id], onDelete: Cascade)
+  sequenceId String
+
+  activity   Activity @relation(fields: [activityId], references: [id])
+  activityId String
+
+  @@unique([sequenceId, activityId])
+  @@index([sequenceId])
+  @@map("sequence_activities")
+}
+
+// ============================================
+// RESULTATS & FEEDBACK
+// ============================================
+
+model Result {
+  id          String   @id @default(cuid())
+  score       Int      // Score 0-100
+  feedback    String?
+  completedAt DateTime @default(now())
+  createdAt   DateTime @default(now())
+
+  user       User     @relation("UserResults", fields: [userId], references: [id], onDelete: Cascade)
+  userId     String
+  activity   Activity @relation("ActivityResults", fields: [activityId], references: [id], onDelete: Cascade)
+  activityId String
+
+  @@index([userId])
+  @@index([activityId])
+  @@map("results")
+}
+
+model Feedback {
+  id        String   @id @default(cuid())
+  content   String
+  type      String   @default("general") // general, encouragement, correction
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  teacher   User   @relation("TeacherFeedbacks", fields: [teacherId], references: [id])
+  teacherId String
+
+  student   User   @relation("StudentFeedbacks", fields: [studentId], references: [id])
+  studentId String
+
+  activity   Activity? @relation("ActivityFeedbacks", fields: [activityId], references: [id])
+  activityId String?
+
+  @@index([teacherId])
+  @@index([studentId])
+  @@map("feedbacks")
+}
+
+// ============================================
+// PARAMETRES SYSTEME
+// ============================================
+
+model SystemSetting {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     Json     // Valeur du parametre (peut etre string, number, boolean, object)
+  category  String   @default("general") // general, auth, email, features
+  label     String?  // Label affiche dans l'interface
+  description String? // Description du parametre
+  isPublic  Boolean  @default(false) // Visible cote client
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([category])
+  @@map("system_settings")
+}
+
+// ============================================
+// PERMISSIONS GRANULAIRES
+// ============================================
+
+enum Permission {
+  // Utilisateurs
+  VIEW_USERS
+  CREATE_USERS
+  EDIT_USERS
+  DELETE_USERS
+  MANAGE_USER_ROLES
+
+  // Établissements
+  VIEW_ESTABLISHMENTS
+  CREATE_ESTABLISHMENTS
+  EDIT_ESTABLISHMENTS
+  DELETE_ESTABLISHMENTS
+
+  // Classes
+  VIEW_CLASSES
+  CREATE_CLASSES
+  EDIT_CLASSES
+  DELETE_CLASSES
+  MANAGE_CLASS_MEMBERS
+
+  // Blocs & Activités
+  VIEW_BLOCS
+  EDIT_BLOCS
+  VIEW_ACTIVITIES
+  CREATE_ACTIVITIES
+  EDIT_ACTIVITIES
+  DELETE_ACTIVITIES
+
+  // Quiz
+  VIEW_QUIZZES
+  CREATE_QUIZZES
+  EDIT_QUIZZES
+  DELETE_QUIZZES
+
+  // Contenu (Vins, Cépages, Appellations, Glossaire)
+  VIEW_CONTENT
+  CREATE_CONTENT
+  EDIT_CONTENT
+  DELETE_CONTENT
+
+  // Arômes
+  VIEW_AROMAS
+  MANAGE_AROMAS
+
+  // Logs & Analytics
+  VIEW_LOGS
+  VIEW_ANALYTICS
+
+  // Paramètres système
+  VIEW_SETTINGS
+  MANAGE_SETTINGS
+
+  // Permissions spéciales
+  MANAGE_PERMISSIONS
+  SUPER_ADMIN_ACCESS
+}
+
+model RolePermission {
+  id         String     @id @default(cuid())
+  role       UserRole
+  permission Permission
+  createdAt  DateTime   @default(now())
+
+  @@unique([role, permission])
+  @@map("role_permissions")
+}
+
+model UserPermission {
+  id         String     @id @default(cuid())
+  userId     String
+  permission Permission
+  granted    Boolean    @default(true) // true = accordé explicitement, false = révoqué
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, permission])
+  @@index([userId])
+  @@map("user_permissions")
+}
